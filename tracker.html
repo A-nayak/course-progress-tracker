@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Learning CV: Auto-Track + Leaderboard</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        
+        .glass-panel { background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
+        .thumbnail-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease; }
+        .group:hover .thumbnail-img { transform: scale(1.05); }
+        
+        .checkbox-wrapper input:checked + div { background-color: #10b981; border-color: #10b981; }
+        .checkbox-wrapper input:checked + div svg { display: block; }
+        
+        /* Leaderboard Colors */
+        .leaderboard-row:nth-child(1) .rank { color: #fbbf24; text-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+        .leaderboard-row:nth-child(2) .rank { color: #94a3b8; }
+        .leaderboard-row:nth-child(3) .rank { color: #b45309; }
+        
+        .hidden-section { display: none; }
+        .show-section { display: grid; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col md:flex-row overflow-x-hidden">
+
+    <aside class="w-full md:w-80 bg-slate-900 border-r border-slate-800 flex-shrink-0 md:h-screen md:sticky md:top-0 overflow-y-auto z-40 order-2 md:order-1 flex flex-col">
+        <div class="p-6 flex-1">
+            <h2 class="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-4 flex items-center gap-2">
+                🏆 Live Rankings
+            </h2>
+            <div id="leaderboard-list" class="space-y-2">
+                <div class="text-slate-500 text-xs animate-pulse">Connecting to satellite...</div>
+            </div>
+        </div>
+        
+        <div class="p-6 border-t border-slate-800 bg-slate-800/50">
+            <label class="text-[10px] text-slate-400 uppercase tracking-wider font-bold mb-2 block">Your Display Name</label>
+            <div class="flex gap-2">
+                <input type="text" id="username-input" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 w-full text-sm text-white focus:border-blue-500 focus:outline-none" placeholder="Enter Name">
+                <button onclick="updateUsername()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded text-sm font-bold transition-colors">Join</button>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-2">Enter name to appear on the board.</p>
+        </div>
+    </aside>
+
+    <div class="flex-1 order-1 md:order-2 relative">
+        
+        <header class="sticky top-0 w-full z-30 glass-panel border-b border-slate-700 shadow-xl">
+            <div class="max-w-6xl mx-auto px-6 py-4">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-emerald-500 rounded flex items-center justify-center font-bold text-white text-xs">DL</div>
+                        <div>
+                            <h1 class="font-bold text-white text-lg leading-none">Course Tracker</h1>
+                            <p class="text-[10px] text-slate-400">Target: <span class="text-red-400 font-bold">Dec 29</span></p>
+                        </div>
+                    </div>
+                    <div class="flex gap-6 text-right">
+                        <div>
+                            <div class="text-xl font-bold text-emerald-400" id="stat-percent">0%</div>
+                            <div class="text-[9px] uppercase text-slate-500 font-bold">Done</div>
+                        </div>
+                        <div>
+                            <div class="text-xl font-bold text-blue-400" id="stat-daily">0</div>
+                            <div class="text-[9px] uppercase text-slate-500 font-bold">Today</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
+                    <div id="global-progress" class="h-full bg-gradient-to-r from-blue-500 to-emerald-500 w-0 transition-all duration-700"></div>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-6xl mx-auto px-6 pt-8 pb-24">
+            
+            <div class="bg-gradient-to-r from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-6 mb-8 relative overflow-hidden shadow-lg">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                <h2 class="text-lg font-bold text-white mb-1 flex items-center gap-2">📅 Today's Mission</h2>
+                <p id="plan-msg" class="text-slate-300 text-sm relative z-10">Calculating schedule...</p>
+            </div>
+
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">📚 Watch Queue</h3>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                    <span class="text-xs text-slate-400">Auto-Tracking Active</span>
+                </div>
+            </div>
+
+            <div id="active-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 mb-12"></div>
+
+            <div class="text-center mb-8 border-t border-slate-800 pt-8">
+                <button onclick="toggleCompletedSection()" class="px-6 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-full text-xs text-slate-300 transition-colors uppercase tracking-wide font-bold">
+                    Show/Hide Completed (<span id="completed-count">0</span>)
+                </button>
+            </div>
+
+            <div id="completed-grid" class="hidden-section grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 opacity-50 grayscale transition-all"></div>
+        </main>
+    </div>
+
+    <div id="video-modal" class="fixed inset-0 bg-black/95 z-[100] hidden flex-col items-center justify-center p-4 backdrop-blur-md">
+        <div class="w-full max-w-5xl aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-700 relative">
+            <div id="youtube-player"></div>
+        </div>
+        <div class="w-full max-w-5xl mt-4 flex justify-between items-center px-2">
+            <div>
+                <h3 id="modal-video-title" class="font-bold text-white text-lg line-clamp-1">Video Title</h3>
+                <p id="watch-status" class="text-slate-400 text-sm font-mono mt-1">Status: Ready</p>
+            </div>
+            <button onclick="closeVideoModal()" class="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold border border-slate-600 transition-colors">Close</button>
+        </div>
+    </div>
+
+    <div id="note-modal" class="fixed inset-0 bg-black/80 z-[110] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-slate-900 w-full max-w-lg rounded-2xl border border-slate-700 shadow-2xl p-6">
+            <h3 class="text-xl font-bold text-white mb-4" id="note-modal-title">Notes</h3>
+            <textarea id="modal-textarea" class="w-full h-48 bg-slate-800 border border-slate-700 rounded-xl p-4 text-sm text-white focus:outline-none focus:border-blue-500 resize-none" placeholder="Write your key takeaways..."></textarea>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closeNoteModal()" class="px-5 py-2 text-sm text-slate-400 hover:text-white">Cancel</button>
+                <button onclick="saveModalNote()" class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold">Save Note</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURATION ---
+        const CONFIG = { startDate: new Date("2025-11-27"), deadline: new Date("2025-12-29") };
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyCHbDPM9CXbSeiZKeiAlCsY2pK5k4ohGlM",
+            authDomain: "deep-learning-leaderboard.firebaseapp.com",
+            projectId: "deep-learning-leaderboard",
+            storageBucket: "deep-learning-leaderboard.firebasestorage.app",
+            messagingSenderId: "335480106114",
+            appId: "1:335480106114:web:38e54964ba7e838f0cd89b",
+            measurementId: "G-F1SB0ZXVNV"
+        };
+
+        // --- 2. DATA (129 Videos) ---
+        const courseData = [
+            { "id": "wXSmG9pxOlE", "title": "Course Introduction and Overview", "index": 1 },
+            { "id": "1u4eOUXSlx4", "title": "History", "index": 2 },
+            { "id": "4pbPQwA1m0o", "title": "Image Formation", "index": 3 },
+            { "id": "PyoJdMrUMqI", "title": "Image Representation", "index": 4 },
+            { "id": "LiuMJvpSbOU", "title": "Linear Filtering", "index": 5 },
+            { "id": "QdM-QariW30", "title": "Image in Frequency Domain", "index": 6 },
+            { "id": "nfEaPWZ_dRQ", "title": "Image Sampling", "index": 7 },
+            { "id": "9r8ph2pb9aw", "title": "Edge Detection", "index": 8 },
+            { "id": "1E44Sw8-RG0", "title": "From Edges to Blobs and Corners", "index": 9 },
+            { "id": "f4mL4Thr9hc", "title": "Scale Space, Image Pyramids and Filter Banks", "index": 10 },
+            { "id": "gEoWMLXk0Ys", "title": "Feature Detectors : SIFT and Variants", "index": 11 },
+            { "id": "0HbRnFTOOms", "title": "Image Segmentation", "index": 12 },
+            { "id": "hBMOK2YCpXc", "title": "Other Feature Spaces", "index": 13 },
+            { "id": "WP6Viubo5b8", "title": "Human Visual System", "index": 14 },
+            { "id": "Bcm264VX6r8", "title": "Feature Matching", "index": 15 },
+            { "id": "uJ_8byXUqGc", "title": "Hough Transform", "index": 16 },
+            { "id": "CwJPEMcuAxY", "title": "From Points to Images:Bag-of-Words and VLAD Representations", "index": 17 },
+            { "id": "pHbQeVWuAfI", "title": "Image Descriptor Matching", "index": 18 },
+            { "id": "-s4D_QTzpuo", "title": "Pyramid Matching", "index": 19 },
+            { "id": "CAhVHKRjORA", "title": "From Traditional Vision to Deep Learning", "index": 20 },
+            { "id": "47d0M3UAXNc", "title": "Neural Networks: A Review - Part 1", "index": 21 },
+            { "id": "OKVn7q20dEY", "title": "Neural Networks: A Review - Part 2", "index": 22 },
+            { "id": "8sjbwfHdqW8", "title": "Feedforward Neural Networks and Backpropagation - Part 1", "index": 23 },
+            { "id": "XV20CvRsIJU", "title": "Feedforward Neural Networks and Backpropagation - Part 2", "index": 24 },
+            { "id": "UkEThLiReTY", "title": "Gradient Descent and Variants - Part 1", "index": 25 },
+            { "id": "g_bV6bo5dL0", "title": "Gradient Descent and Variants - Part 2", "index": 26 },
+            { "id": "fS1aoHtTKMs", "title": "Regularization in Neural Networks - Part 1", "index": 27 },
+            { "id": "oHtOFQR0Wng", "title": "Regularization in Neural Networks - Part 2", "index": 28 },
+            { "id": "9Z5C-bOMafs", "title": "Improving Training of Neural Networks - Part 1", "index": 29 },
+            { "id": "Q364dPTYsrk", "title": "Improving Training of Neural Networks - Part 2", "index": 30 },
+            { "id": "tH6uRl6f3bc", "title": "Convolutional Neural Networks: An Introduction - Part 01", "index": 31 },
+            { "id": "H_JtjeSNhA0", "title": "Convolutional Neural Networks: An Introduction - Part 02", "index": 32 },
+            { "id": "pUCCd2-17vI", "title": "Backpropagation in CNNs", "index": 33 },
+            { "id": "rEFTKAXEBgY", "title": "Evolution of CNN Architectures for Image Classification-Part 01", "index": 34 },
+            { "id": "YizB_RoGrMs", "title": "Evolution of CNN Architectures for Image Classification-Part 02", "index": 35 },
+            { "id": "p047WxBf-qA", "title": "Recent CNN Architectures", "index": 36 },
+            { "id": "cDvkwPBOWdo", "title": "Finetuning in CNNs", "index": 37 },
+            { "id": "u3FBpyUA1dc", "title": "Explaining CNNs: Visualization Methods", "index": 38 },
+            { "id": "a4TDSLGhKi8", "title": "Explaining CNNs: Early Methods", "index": 39 },
+            { "id": "VmbBnSv3otc", "title": "Explaining CNNs: Class Attribution Map Methods", "index": 40 },
+            { "id": "-ZGmpoRBBaw", "title": "Explaining CNNs: Recent Methods - Part 01", "index": 41 },
+            { "id": "9OzwN-Ub6Lg", "title": "Explaining CNNs: Recent Methods -Part 02", "index": 42 },
+            { "id": "9Moxmab_Y4I", "title": "Going Beyond Explaining CNNs", "index": 43 },
+            { "id": "yqyLWUKftI0", "title": "CNNs for Object Detection I PART 01", "index": 44 },
+            { "id": "VQXD6ZfYT6o", "title": "CNNs for Object Detection I PART 02", "index": 45 },
+            { "id": "JI-bxTnnSTg", "title": "CNNs for Object Detection II", "index": 46 },
+            { "id": "4zuAYazbCQ0", "title": "CNNs for Segmentation", "index": 47 },
+            { "id": "q5Up_IPfYuw", "title": "CNNs for Human Understanding Faces- Part 01", "index": 48 },
+            { "id": "k4mNPA7WOVs", "title": "CNNs for Human Understanding Faces PART 02", "index": 49 },
+            { "id": "q8tB0jviYzU", "title": "CNNs for Human Understanding Human Pose and Crowd", "index": 50 },
+            { "id": "KbmoTrbSNw8", "title": "CNNs for Other Image Tasks", "index": 51 },
+            { "id": "c-k79rJagjQ", "title": "Recurrent Neural Networks Introduction", "index": 52 },
+            { "id": "I4_lyJVnpMg", "title": "Backpropagation in RNNs", "index": 53 },
+            { "id": "4vryB1QhBNc", "title": "LSTMs and GRUs", "index": 54 },
+            { "id": "P84OW5GovBE", "title": "Video Understanding using CNNs and RNNs", "index": 55 },
+            { "id": "msiQiqXgOkk", "title": "Attention in Vision Models: An Introduction", "index": 56 },
+            { "id": "BPL3hHNvJmU", "title": "Vision and Language: Image Captioning", "index": 57 },
+            { "id": "Atf7uJ1JIZU", "title": "Beyond Captioning: Visual QA, Visual Dialog", "index": 58 },
+            { "id": "Pbc8QHMBhik", "title": "Other Attention Models", "index": 59 },
+            { "id": "phOc25QfNS0", "title": "Self-Attention and Transformers", "index": 60 },
+            { "id": "v_ksUIpToGk", "title": "Deep Generative Models: An Introduction", "index": 61 },
+            { "id": "LMpyYPzxQ9w", "title": "Generative Adversarial Networks-Part 01", "index": 62 },
+            { "id": "X3SJ2mRodF0", "title": "Generative Adversarial Networks-Part 02", "index": 63 },
+            { "id": "psaDtRj_8oA", "title": "Variational Autoencoders", "index": 64 },
+            { "id": "0OgFW2W9LRY", "title": "Combining VAEs and GANs", "index": 65 },
+            { "id": "RPkf516rXgw", "title": "Beyond VAEs and GANs: Other Deep Generative Models-01", "index": 66 },
+            { "id": "Lcpqkh1Y9wQ", "title": "Beyond VAEs and GANs: Other Deep Generative Models-02", "index": 67 },
+            { "id": "oRQ67il-hdY", "title": "GAN Improvements", "index": 68 },
+            { "id": "DyiZW9uQwVE", "title": "Deep Generative Models across Multiple Domains", "index": 69 },
+            { "id": "hq6V5i3Xrgk", "title": "VAEs and DIsentanglement", "index": 70 },
+            { "id": "R9tEJhUfFL4", "title": "Deep Generative Models: Image Applications", "index": 71 },
+            { "id": "go6w8bPmV6s", "title": "Deep Generative Models: Video Applications", "index": 72 },
+            { "id": "ppC9ruaVuQQ", "title": "Few-shot and Zero-shot Learning - Part 01", "index": 73 },
+            { "id": "Ex3FwzOGIkY", "title": "Few-shot and Zero-shot Learning - Part 02", "index": 74 },
+            { "id": "hTroTWINb5w", "title": "Self-Supervised Learning", "index": 75 },
+            { "id": "Rn-OsIOnCI4", "title": "Adversarial Robustness", "index": 76 },
+            { "id": "AgezOkBTV90", "title": "Pruning and Model Compression", "index": 77 },
+            { "id": "8_Tb1pjtjRE", "title": "Neural Architecture Search", "index": 78 },
+            { "id": "4-EMqgdJmK4", "title": "Course Conclusion", "index": 79 },
+            { "id": "VOxWdQxWcLg", "title": "Neural Networks: A Review - Part 1", "index": 80 },
+            { "id": "SMRF9c-xAtY", "title": "Neural Networks: A Review - Part 2", "index": 81 },
+            { "id": "KuM8C6_XCTU", "title": "Feedforward Neural Networks and Backpropagation - Part 1", "index": 82 },
+            { "id": "uYpZyzxxyII", "title": "Feedforward Neural Networks and Backpropagation - Part 2", "index": 83 },
+            { "id": "Azuoh-WlQuY", "title": "Gradient Descent and Variants - Part 1", "index": 84 },
+            { "id": "9zYxWHU9Ick", "title": "Gradient Descent and Variants - Part 2", "index": 85 },
+            { "id": "uJir_khrGBY", "title": "Regularization in Neural Networks - Part 1", "index": 86 },
+            { "id": "AGxz3mY7WZg", "title": "Regularization in Neural Networks - Part 2", "index": 87 },
+            { "id": "mFIYldBMyEQ", "title": "Improving Training of Neural Networks - Part 1", "index": 88 },
+            { "id": "OiIVNcfruzE", "title": "Improving Training of Neural Networks - Part 2", "index": 89 },
+            { "id": "cUBWTR3-bCc", "title": "Convolutional Neural Networks: An Introduction - Part 01", "index": 90 },
+            { "id": "jGbVN6LOYj4", "title": "02 Convolutional Neural Networks An Introduction Part 02", "index": 91 },
+            { "id": "pp6LPJuw0Po", "title": "03 Backpropagation in CNNs", "index": 92 },
+            { "id": "1ic-vzTpJCE", "title": "04 Evolution of CNN Architectures for Image Classification Part 01", "index": 93 },
+            { "id": "Pls1_qRA0fY", "title": "Evolution of CNN Architectures: InceptionNet, ResNet", "index": 94 },
+            { "id": "_ermvion1M0", "title": "Newer and Recent CNN Architectures", "index": 95 },
+            { "id": "A8MjQoeiSgo", "title": "Finetuning CNNs", "index": 96 },
+            { "id": "tmpzLPmMBD0", "title": "Visualizing CNNs", "index": 97 },
+            { "id": "4o-4_VUwRKw", "title": "CNNs for Object Detection: Pre-Deep Learning Era and Initial Steps", "index": 98 },
+            { "id": "XAZxEx8jI1w", "title": "CNNs for Object Detection: Two-Stage Models", "index": 99 },
+            { "id": "kAbHOo5t2jM", "title": "CNNs for Object Detection: Single-stage Models", "index": 100 },
+            { "id": "nz5a6bxltFo", "title": "CNNs for Segmentation", "index": 101 },
+            { "id": "jPqmZSfr9_w", "title": "Recurrent Neural Networks: Introduction", "index": 102 },
+            { "id": "vZQP26PHNOk", "title": "Backpropagation in RNNs", "index": 103 },
+            { "id": "ArLRhvQ1usc", "title": "LSTMs and GRUs", "index": 104 },
+            { "id": "mHiCDj4hUsU", "title": "Video Understanding using CNNs and RNNs", "index": 105 },
+            { "id": "gYACi7Tq1y4", "title": "Attention in Vision Models: An Introduction", "index": 106 },
+            { "id": "xuPite2wb8Q", "title": "Soft and Hard Attention: Image Captioning", "index": 107 },
+            { "id": "bxYkGKSCTlA", "title": "Additional Content: Beyond Captioning: Visual QA and Dialog", "index": 108 },
+            { "id": "NVkqsV8J4mc", "title": "Self-Attention and Transformers", "index": 109 },
+            { "id": "1lxocPBhn8Y", "title": "From Transformers to Vision Transformers", "index": 110 },
+            { "id": "N6XLRsZsHew", "title": "Transformers for Segmentation", "index": 111 },
+            { "id": "9lP99tPLCRw", "title": "Transformers for Detection", "index": 112 },
+            { "id": "2UU3gaUyXmc", "title": "Deep Generative Models: An Introduction", "index": 113 },
+            { "id": "iU8SvG_0qYM", "title": "Generative Adversarial Networks - Part 1", "index": 114 },
+            { "id": "zLzuZ4mZ34w", "title": "Generative Adversarial Networks - Part 2", "index": 115 },
+            { "id": "KzMxhOvG0jM", "title": "GAN Hacks and Improvements", "index": 116 },
+            { "id": "rbWHLSUVHSY", "title": "Variational Autoencoders", "index": 117 },
+            { "id": "58e_MOEse6Q", "title": "VAEs and Disentanglement", "index": 118 },
+            { "id": "RiDhcq0tPDY", "title": "Introduction to Diffusion Models and DDPMs - Part 1", "index": 119 },
+            { "id": "MayeYw8zDeQ", "title": "Introduction to Diffusion Models and DDPMs - Part 2", "index": 120 },
+            { "id": "90GlJcpMrm8", "title": "Classifier and Classifier-Free Diffusion Guidance", "index": 121 },
+            { "id": "D9b7wkfneRo", "title": "Contrastive Learning and History in Face Understanding - Part 1", "index": 122 },
+            { "id": "GjZi2BkKkZk", "title": "Contrastive Learning and History in Face Understanding - Part 2", "index": 123 },
+            { "id": "zQWLXkIARr8", "title": "Self-Supervised Learning: SimCLR", "index": 124 },
+            { "id": "vqQJMYM8fgc", "title": "Vision Language Models: Introduction and History", "index": 125 },
+            { "id": "g8q7h9N0MyE", "title": "CLIP: The Anchoring Inflection Point", "index": 126 },
+            { "id": "M8vZ_alld5I", "title": "Beyond CLIP: BLIP, BLIP-2 and CoCA", "index": 127 },
+            { "id": "kxnKDv1sYDk", "title": "From VLMs to Multimodal LLMs", "index": 128 },
+            { "id": "rWF78Ws_ydI", "title": "Course Conclusion", "index": 129 }
+        ];
+
+        // --- 3. STATE & INIT ---
+        let state = JSON.parse(localStorage.getItem('dl_tracker_final')) || { completed: [], notes: {}, username: "Anonymous" };
+        let player = null;
+        let trackingInterval = null;
+        let currentVideoIndex = null;
+        let currentNoteIndex = null;
+
+        // Init Firebase
+        try {
+            firebase.initializeApp(firebaseConfig);
+            const database = firebase.database();
+            console.log("Firebase Connected");
+            listenToLeaderboard();
+        } catch (e) {
+            console.error("Firebase Error:", e);
+            document.getElementById('leaderboard-list').innerHTML = `<div class='text-red-400 text-[10px] p-2 bg-red-900/20 rounded'>Connection Error. Check Config.</div>`;
+        }
+
+        // Init YouTube
+        var tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        var firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player('youtube-player', {
+                height: '100%',
+                width: '100%',
+                videoId: '',
+                playerVars: { 'playsinline': 1, 'rel': 0 },
+                events: { 'onStateChange': onPlayerStateChange }
+            });
+        }
+
+        // --- 4. RENDER LOGIC ---
+        function render() {
+            const activeGrid = document.getElementById('active-grid');
+            const completedGrid = document.getElementById('completed-grid');
+            activeGrid.innerHTML = ''; completedGrid.innerHTML = '';
+            
+            courseData.forEach(video => {
+                const isDone = state.completed.includes(video.index);
+                const hasNote = state.notes[video.index] && state.notes[video.index].trim().length > 0;
+                
+                const card = createCard(video, isDone, hasNote);
+                (isDone ? completedGrid : activeGrid).appendChild(card);
+            });
+
+            updateStats();
+            document.getElementById('username-input').value = state.username === "Anonymous" ? "" : state.username;
+        }
+
+        function createCard(video, isDone, hasNote) {
+            const div = document.createElement('div');
+            div.className = `group bg-slate-800 rounded-xl overflow-hidden border transition-all duration-300 ${isDone ? 'border-emerald-900/50 opacity-70' : 'border-slate-700 hover:border-blue-500/50 hover:shadow-lg'}`;
+            div.innerHTML = `
+                <div class="aspect-video relative cursor-pointer" onclick="playVideo(${video.index})">
+                    <img src="https://i.ytimg.com/vi/${video.id}/mqdefault.jpg" class="thumbnail-img">
+                    <div class="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/20 transition-all">
+                        <div class="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center pl-1 shadow-lg group-hover:scale-110 transition-transform">
+                            <svg class="w-6 h-6 text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        </div>
+                    </div>
+                    <div class="absolute bottom-2 right-2 bg-black/80 text-[10px] text-white px-2 py-0.5 rounded font-mono">#${video.index}</div>
+                    ${hasNote ? '<div class="absolute top-2 right-2 text-lg">📝</div>' : ''}
+                </div>
+                <div class="p-4">
+                    <h4 class="text-sm font-semibold text-slate-200 h-10 line-clamp-2 mb-3 cursor-pointer hover:text-blue-400 transition-colors" onclick="playVideo(${video.index})">${video.title}</h4>
+                    <div class="flex items-center justify-between">
+                        <label class="checkbox-wrapper flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" class="sr-only" ${isDone ? 'checked' : ''} onchange="toggleVideo(${video.index})">
+                            <div class="w-5 h-5 border-2 border-slate-600 rounded flex items-center justify-center transition-colors"><svg class="w-3 h-3 text-white hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg></div>
+                            <span class="text-xs text-slate-400 select-none">${isDone ? 'Done' : 'Mark Done'}</span>
+                        </label>
+                        <button onclick="openNote(${video.index})" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">${hasNote ? 'Edit Note' : '+ Note'}</button>
+                    </div>
+                </div>`;
+            return div;
+        }
+
+        // --- 5. TRACKING LOGIC (YouTube + Firebase Sync) ---
+        function onPlayerStateChange(event) {
+            if (event.data == YT.PlayerState.PLAYING) startTracking();
+            else stopTracking();
+        }
+
+        function startTracking() {
+            stopTracking();
+            trackingInterval = setInterval(() => {
+                if(player && player.getCurrentTime && player.getDuration) {
+                    const current = player.getCurrentTime();
+                    const total = player.getDuration();
+                    const percent = (current / total) * 100;
+                    document.getElementById('watch-status').innerHTML = `Progress: <span class="text-blue-400">${Math.round(percent)}%</span>`;
+                    
+                    if(percent > 90) {
+                        if (!state.completed.includes(currentVideoIndex)) {
+                            markVideoDone(currentVideoIndex); // Tracks locally AND Syncs to Firebase
+                            document.getElementById('watch-status').innerHTML = `<span class="text-emerald-400 font-bold">✅ Completed! Syncing rank...</span>`;
+                        }
+                        clearInterval(trackingInterval);
+                    }
+                }
+            }, 2000);
+        }
+
+        function stopTracking() { if(trackingInterval) clearInterval(trackingInterval); }
+
+        function markVideoDone(index) {
+            if (!state.completed.includes(index)) {
+                state.completed.push(index);
+                saveState();
+                syncToFirebase(); // <--- THE BRIDGE: Syncs rank immediately
+                render();
+            }
+        }
+
+        function toggleVideo(index) {
+            if (state.completed.includes(index)) {
+                state.completed = state.completed.filter(i => i !== index);
+            } else {
+                state.completed.push(index);
+            }
+            saveState();
+            syncToFirebase(); // <--- Syncs manual toggles too
+            render();
+        }
+
+        // --- 6. FIREBASE LOGIC ---
+        function updateUsername() {
+            const name = document.getElementById('username-input').value.trim();
+            if(name) {
+                state.username = name;
+                saveState();
+                syncToFirebase();
+                alert(`Welcome, ${name}! Your progress is now on the leaderboard.`);
+            }
+        }
+
+        function syncToFirebase() {
+            if (!firebase.apps.length || state.username === "Anonymous") return;
+            const db = firebase.database();
+            const safeName = state.username.replace(/[.#$/[\]]/g, '');
+            
+            db.ref('users/' + safeName).set({
+                username: state.username,
+                score: state.completed.length,
+                percentage: Math.round((state.completed.length / courseData.length) * 100),
+                lastUpdate: Date.now()
+            });
+        }
+
+        function listenToLeaderboard() {
+            if (!firebase.apps.length) return;
+            const db = firebase.database();
+            db.ref('users').on('value', (snapshot) => {
+                const data = snapshot.val();
+                const list = document.getElementById('leaderboard-list');
+                
+                if (!data) { list.innerHTML = "<div class='text-slate-500 text-xs'>No players yet.</div>"; return; }
+
+                const sorted = Object.values(data).sort((a, b) => b.score - a.score);
+                list.innerHTML = '';
+                
+                sorted.forEach((user, index) => {
+                    const isMe = user.username === state.username;
+                    const row = document.createElement('div');
+                    row.className = `leaderboard-row flex items-center justify-between p-3 rounded-lg border ${isMe ? 'bg-blue-900/20 border-blue-500/50' : 'bg-slate-800 border-slate-700'}`;
+                    row.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <div class="rank font-bold text-slate-500 w-5 text-center text-sm">#${index + 1}</div>
+                            <div>
+                                <div class="text-xs font-bold ${isMe ? 'text-blue-400' : 'text-slate-200'}">${user.username} ${isMe ? '(You)' : ''}</div>
+                                <div class="text-[9px] text-slate-500">Progress: ${user.percentage}%</div>
+                            </div>
+                        </div>
+                        <div class="text-sm font-bold text-white">${user.score} <span class="text-[9px] text-slate-500 font-normal">pts</span></div>
+                    `;
+                    list.appendChild(row);
+                });
+            });
+        }
+
+        // --- 7. UTILS & UI HELPERS ---
+        function playVideo(index) {
+            currentVideoIndex = index;
+            const video = courseData.find(v => v.index === index);
+            document.getElementById('video-modal').classList.remove('hidden');
+            document.getElementById('video-modal').classList.add('flex');
+            document.getElementById('modal-video-title').innerText = video.title;
+            document.getElementById('watch-status').innerText = "Status: Loading...";
+            if(player && player.loadVideoById) player.loadVideoById(video.id);
+            else setTimeout(() => playVideo(index), 500);
+        }
+
+        function closeVideoModal() {
+            if(player) player.stopVideo();
+            stopTracking();
+            document.getElementById('video-modal').classList.add('hidden');
+            document.getElementById('video-modal').classList.remove('flex');
+        }
+
+        function openNote(index) { currentNoteIndex = index; document.getElementById('note-modal-title').innerText = `Notes: #${index}`; document.getElementById('modal-textarea').value = state.notes[index] || ''; document.getElementById('note-modal').classList.remove('hidden'); }
+        function saveModalNote() { state.notes[currentNoteIndex] = document.getElementById('modal-textarea').value; saveState(); closeNoteModal(); render(); }
+        function closeNoteModal() { document.getElementById('note-modal').classList.add('hidden'); }
+        function toggleCompletedSection() { document.getElementById('completed-grid').classList.toggle('hidden-section'); document.getElementById('completed-grid').classList.toggle('show-section'); }
+        
+        function updateStats() {
+            const total = courseData.length, completed = state.completed.length;
+            const pct = Math.round((completed/total)*100);
+            document.getElementById('stat-percent').innerText = pct + '%';
+            document.getElementById('global-progress').style.width = pct + '%';
+            document.getElementById('completed-count').innerText = completed;
+            const today = new Date(), daysLeft = Math.ceil((CONFIG.deadline - today)/(86400000));
+            const rate = daysLeft > 0 ? ((total - completed) / daysLeft).toFixed(1) : (total - completed);
+            document.getElementById('stat-daily').innerText = Math.ceil(rate);
+            
+            const msg = completed >= total ? "<span class='text-emerald-400'>🎉 Course Complete!</span>" : `Watch <strong class="text-white">${Math.ceil(rate)} videos</strong> today.`;
+            document.getElementById('plan-msg').innerHTML = msg;
+        }
+
+        function saveState() { localStorage.setItem('dl_tracker_final', JSON.stringify(state)); }
+
+        // Start
+        render();
+    </script>
+</body>
+</html>
