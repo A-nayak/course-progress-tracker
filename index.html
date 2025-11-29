@@ -1,16 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Deep Learning CV: Pro Tracker</title>
-    
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
-    
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
-    
+
     <script>
         tailwind.config = {
             theme: {
@@ -29,13 +29,13 @@
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #0f0f0f; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-        
+
         .video-card { transition: transform 0.2s; }
         .video-card:hover { transform: scale(1.02); z-index: 10; background: #272727; }
-        
+
         /* Focus Mode Glow */
         .focus-active { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); border-color: #3b82f6; }
-        
+
         /* Progress Bar on Card */
         .progress-rail { background: rgba(255,255,255,0.2); height: 3px; width: 100%; position: absolute; bottom: 0; left: 0; }
         .progress-fill { background: #ff0000; height: 100%; transition: width 0.3s; }
@@ -43,374 +43,419 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-    <header class="h-16 bg-yt-base/95 backdrop-blur border-b border-white/10 flex items-center justify-between px-6 z-50 shrink-0">
-        <div class="flex items-center gap-4">
-            <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold text-white text-xs">DL</div>
+<header class="h-16 bg-yt-base/95 backdrop-blur border-b border-white/10 flex items-center justify-between px-6 z-50 shrink-0">
+    <div class="flex items-center gap-4">
+        <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold text-white text-xs">DL</div>
+        <div>
+            <h1 class="font-bold text-white text-sm md:text-base">Deep Learning Tracker</h1>
+            <div class="text-[10px] text-gray-400" id="header-stats">Loading...</div>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-4">
+        <button onclick="toggleFocusMode()" id="focus-btn" class="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-700 hover:bg-gray-800 transition-all text-sm font-medium">
+            <span class="relative flex h-3 w-3">
+              <span id="focus-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-0"></span>
+              <span id="focus-dot" class="relative inline-flex rounded-full h-3 w-3 bg-gray-500"></span>
+            </span>
+            Focus Mode
+        </button>
+
+        <div class="w-px h-8 bg-gray-800"></div>
+
+        <div class="flex flex-col items-end">
+            <input type="text" id="username-input" class="bg-transparent border-none text-right text-xs text-white focus:outline-none placeholder-gray-600" placeholder="Enter Name..." onblur="updateUsername()">
+            <div id="rank-display" class="text-[10px] text-blue-400 font-bold">Anonymous</div>
+        </div>
+    </div>
+</header>
+
+<div class="flex flex-1 overflow-hidden">
+    <aside class="hidden md:flex w-64 flex-col bg-black/50 border-r border-white/5 overflow-y-auto">
+        <div class="p-4 sticky top-0 bg-[#0f0f0f] z-10 border-b border-white/5">
+            <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Live Rankings</h2>
+        </div>
+        <div id="leaderboard-list" class="p-2 space-y-1"></div>
+    </aside>
+
+    <main class="flex-1 overflow-y-auto p-6 relative" id="main-scroll">
+
+        <div class="mb-8 bg-gradient-to-r from-blue-900/40 to-purple-900/40 border border-white/10 rounded-xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
-                <h1 class="font-bold text-white text-sm md:text-base">Deep Learning Tracker</h1>
-                <div class="text-[10px] text-gray-400" id="header-stats">Loading...</div>
+                <h2 class="text-xl font-bold text-white mb-1">📅 Today's Mission</h2>
+                <p id="daily-msg" class="text-gray-400 text-sm">Calculating trajectory...</p>
+            </div>
+            <div class="text-right">
+                <div class="text-3xl font-bold text-white" id="daily-count">0</div>
+                <div class="text-[10px] text-gray-400 uppercase tracking-wider">Videos to Watch</div>
             </div>
         </div>
 
-        <div class="flex items-center gap-4">
-            <button onclick="toggleFocusMode()" id="focus-btn" class="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-700 hover:bg-gray-800 transition-all text-sm font-medium">
-                <span class="relative flex h-3 w-3">
-                  <span id="focus-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-0"></span>
-                  <span id="focus-dot" class="relative inline-flex rounded-full h-3 w-3 bg-gray-500"></span>
-                </span>
-                Focus Mode
-            </button>
-            
-            <div class="w-px h-8 bg-gray-800"></div>
-
-            <div class="flex flex-col items-end">
-                <input type="text" id="username-input" class="bg-transparent border-none text-right text-xs text-white focus:outline-none placeholder-gray-600" placeholder="Enter Name..." onblur="updateUsername()">
-                <div id="rank-display" class="text-[10px] text-blue-400 font-bold">Anonymous</div>
-            </div>
+        <div id="focus-banner" class="hidden mb-6 bg-blue-500/10 border border-blue-500/50 text-blue-400 px-4 py-3 rounded-lg text-sm flex items-center gap-2 animate-pulse">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            <span><strong>Focus Mode Active:</strong> Showing only your daily target. Distractions hidden.</span>
         </div>
-    </header>
 
-    <div class="flex flex-1 overflow-hidden">
-        <aside class="hidden md:flex w-64 flex-col bg-black/50 border-r border-white/5 overflow-y-auto">
-            <div class="p-4 sticky top-0 bg-[#0f0f0f] z-10 border-b border-white/5">
-                <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Live Rankings</h2>
-            </div>
-            <div id="leaderboard-list" class="p-2 space-y-1">
-                </div>
-        </aside>
-
-        <main class="flex-1 overflow-y-auto p-6 relative" id="main-scroll">
+        <div class="flex justify-between items-end mb-4">
+            <h3 class="text-white font-bold text-lg" id="grid-title">Course Content</h3>
             
-            <div class="mb-8 bg-gradient-to-r from-blue-900/40 to-purple-900/40 border border-white/10 rounded-xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div>
-                    <h2 class="text-xl font-bold text-white mb-1">📅 Today's Mission</h2>
-                    <p id="daily-msg" class="text-gray-400 text-sm">Calculating trajectory...</p>
-                </div>
-                <div class="text-right">
-                    <div class="text-3xl font-bold text-white" id="daily-count">0</div>
-                    <div class="text-[10px] text-gray-400 uppercase tracking-wider">Videos to Watch</div>
-                </div>
-            </div>
+            <label class="flex items-center gap-2 cursor-pointer text-xs text-gray-500 hover:text-white transition-colors select-none">
+                <input type="checkbox" id="hide-completed-check" onchange="toggleHideCompleted()" class="accent-blue-500 w-4 h-4 rounded border-gray-600 bg-transparent">
+                Hide Completed
+            </label>
+        </div>
 
-            <div id="focus-banner" class="hidden mb-6 bg-blue-500/10 border border-blue-500/50 text-blue-400 px-4 py-3 rounded-lg text-sm flex items-center gap-2 animate-pulse">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                <span><strong>Focus Mode Active:</strong> Showing only your daily target. Distractions hidden.</span>
-            </div>
+        <div id="video-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20"></div>
 
-            <div class="flex justify-between items-end mb-4">
-                <h3 class="text-white font-bold text-lg" id="grid-title">Course Content</h3>
-                <button onclick="toggleCompleted()" class="text-xs text-gray-500 hover:text-white transition-colors">Toggle Completed</button>
-            </div>
+    </main>
+</div>
 
-            <div id="video-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20"></div>
-
-        </main>
-    </div>
-
-    <div id="video-modal" class="fixed inset-0 bg-black/95 z-[100] hidden flex-col items-center justify-center backdrop-blur-sm">
-        <div class="w-full max-w-6xl p-4">
-            <div class="flex justify-between items-center mb-2 text-white">
-                <h3 id="modal-title" class="font-bold truncate pr-4">Video Title</h3>
-                <button onclick="closeModal()" class="p-2 hover:bg-white/10 rounded-full">✕</button>
+<div id="video-modal" class="fixed inset-0 bg-black/95 z-[100] hidden flex-col items-center justify-center backdrop-blur-sm">
+    <div class="w-full max-w-6xl p-4">
+        <div class="flex justify-between items-center mb-2 text-white">
+            <h3 id="modal-title" class="font-bold truncate pr-4">Video Title</h3>
+            <button onclick="closeModal()" class="p-2 hover:bg-white/10 rounded-full">✕</button>
+        </div>
+        <div class="aspect-video bg-black border border-white/10 rounded-lg overflow-hidden relative shadow-2xl">
+            <div id="youtube-player"></div>
+        </div>
+        <div class="mt-4 flex justify-between items-center bg-[#1e1e1e] p-4 rounded-lg border border-white/5">
+            <div class="flex items-center gap-3">
+                <div class="text-xs text-gray-400 font-mono">STATUS</div>
+                <div id="watch-status" class="text-sm font-bold text-white">Ready</div>
             </div>
-            <div class="aspect-video bg-black border border-white/10 rounded-lg overflow-hidden relative shadow-2xl">
-                <div id="youtube-player"></div>
-            </div>
-            <div class="mt-4 flex justify-between items-center bg-[#1e1e1e] p-4 rounded-lg border border-white/5">
-                <div class="flex items-center gap-3">
-                    <div class="text-xs text-gray-400 font-mono">STATUS</div>
-                    <div id="watch-status" class="text-sm font-bold text-white">Ready</div>
-                </div>
-                <div class="flex gap-3">
-                    <button onclick="manualComplete()" class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white text-xs font-bold rounded uppercase tracking-wide">Mark Done</button>
-                </div>
+            <div class="flex gap-3">
+                <button onclick="manualComplete()" class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white text-xs font-bold rounded uppercase tracking-wide">Mark Done</button>
             </div>
         </div>
     </div>
+</div>
 
-    <script>
-        // --- 1. CONFIGURATION ---
-        const CONFIG = { 
-            startDate: new Date("2025-11-27"), 
-            deadline: new Date("2025-12-29"),
-            totalVideos: 129
-        };
-        
-        const firebaseConfig = {
-            apiKey: "AIzaSyCHbDPM9CXbSeiZKeiAlCsY2pK5k4ohGlM",
-            authDomain: "deep-learning-leaderboard.firebaseapp.com",
-            projectId: "deep-learning-leaderboard",
-            databaseURL: "https://deep-learning-leaderboard-default-rtdb.firebaseio.com", // Ensure this is correct
-            appId: "1:335480106114:web:38e54964ba7e838f0cd89b"
-        };
+<script>
+    // --- 1. CONFIGURATION ---
+    const CONFIG = {
+        playlistId: "PLyqSpQzTE6M_PI-rIz4O1jEgffhJU9GgG",
+        startDate: new Date("2025-11-27"),
+        deadline: new Date("2025-12-29"),
+        totalVideos: 0
+    };
 
-        // --- 2. DATA (Truncated for this view, ensure full array is used) ---
-        // PLEASE PASTE YOUR FULL 129 VIDEO ARRAY HERE. I am using a placeholder generator.
-        const courseData = [];
-        for(let i=1; i<=129; i++) {
-            // Using a generic ID for demo. Replace with your actual array.
-            // For the example to work, I'll map a few real IDs if you have them, otherwise using placeholders
-            courseData.push({ 
-                id: i < 5 ? ["wXSmG9pxOlE", "1u4eOUXSlx4", "4pbPQwA1m0o", "PyoJdMrUMqI"][i-1] : "wXSmG9pxOlE", 
-                title: `Lesson ${i}: Deep Learning Concept`, 
-                index: i 
-            });
-        }
+    const firebaseConfig = {
+        apiKey: "AIzaSyCHbDPM9CXbSeiZKeiAlCsY2pK5k4ohGlM",
+        authDomain: "deep-learning-leaderboard.firebaseapp.com",
+        projectId: "deep-learning-leaderboard",
+        databaseURL: "https://deep-learning-leaderboard-default-rtdb.firebaseio.com",
+        appId: "1:335480106114:web:38e54964ba7e838f0cd89b"
+    };
 
-        // --- 3. STATE MANAGEMENT ---
-        let state = JSON.parse(localStorage.getItem('dl_tracker_v3')) || { 
-            completed: [], 
-            progress: {}, // New: { 1: 50, 2: 100 } (VideoIndex: Percentage)
-            username: "Anonymous",
-            focusMode: false
-        };
-        
-        let player = null;
-        let trackingInterval = null;
-        let activeVideoIndex = null;
-        let showCompleted = true;
+    // --- 2. DATA ---
+    let courseData = [];
 
-        // Init Firebase
+    // --- 3. STATE MANAGEMENT ---
+    let state = JSON.parse(localStorage.getItem('dl_tracker_v3')) || {
+        completed: [],
+        progress: {},
+        username: "Anonymous",
+        focusMode: false
+    };
+
+    let player = null;
+    let trackingInterval = null;
+    let activeVideoIndex = null;
+    
+    // UPDATED: Default is false (unticked), meaning videos are visible
+    let hideCompleted = false; 
+
+    // Init Firebase
+    try {
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        syncLeaderboard();
+    } catch (e) { console.error("Firebase Error", e); }
+
+    // Load YouTube IFrame API
+    var tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    var firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('youtube-player', {
+            height: '100%',
+            width: '100%',
+            videoId: '',
+            playerVars: { 'playsinline': 1, 'rel': 0, 'autoplay': 0, 'controls': 1 },
+            events: {
+                'onReady': onPlayerReady,
+                'onStateChange': onPlayerStateChange
+            }
+        });
+    }
+
+    function onPlayerReady(evt) {
         try {
-            firebase.initializeApp(firebaseConfig);
-            const db = firebase.database();
-            syncLeaderboard(); // Start listening
-        } catch (e) { console.error("Firebase Error", e); }
-
-        // Init YouTube API
-        var tag = document.createElement('script');
-        tag.src = "https://www.youtube.com/iframe_api";
-        var firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-        function onYouTubeIframeAPIReady() {
-            player = new YT.Player('youtube-player', {
-                height: '100%', width: '100%', videoId: '',
-                playerVars: { 'playsinline': 1, 'rel': 0, 'autoplay': 1 },
-                events: { 'onStateChange': onPlayerStateChange }
-            });
-        }
-
-        // --- 4. CORE FUNCTIONS ---
-
-        function render() {
-            const grid = document.getElementById('video-grid');
-            grid.innerHTML = '';
-
-            // Calculate Plan
-            const completedCount = state.completed.length;
-            const daysLeft = Math.max(1, Math.ceil((CONFIG.deadline - new Date()) / 86400000));
-            const dailyTarget = Math.ceil((CONFIG.totalVideos - completedCount) / daysLeft);
-            
-            // Update Stats UI
-            document.getElementById('daily-count').innerText = dailyTarget;
-            document.getElementById('daily-msg').innerText = state.completed.length === CONFIG.totalVideos ? "Course Complete!" : `You have ${daysLeft} days remaining.`;
-            document.getElementById('header-stats').innerText = `${Math.round((completedCount/CONFIG.totalVideos)*100)}% Complete`;
-            document.getElementById('username-input').value = state.username === "Anonymous" ? "" : state.username;
-            document.getElementById('rank-display').innerText = state.username;
-
-            // Filter Data based on Focus Mode
-            let videosToRender = courseData;
-            
-            if (state.focusMode) {
-                // Focus Mode: Show Unwatched videos up to the daily target count
-                const unwatched = courseData.filter(v => !state.completed.includes(v.index));
-                videosToRender = unwatched.slice(0, dailyTarget);
-                document.getElementById('focus-btn').classList.add('focus-active', 'bg-blue-900/20', 'text-blue-400');
-                document.getElementById('focus-ping').classList.remove('opacity-0');
-                document.getElementById('focus-dot').classList.add('bg-blue-500');
-                document.getElementById('focus-banner').classList.remove('hidden');
-                document.getElementById('grid-title').innerText = "Target Locked: Today's Queue";
-            } else {
-                if(!showCompleted) {
-                    videosToRender = courseData.filter(v => !state.completed.includes(v.index));
-                }
-                document.getElementById('focus-btn').classList.remove('focus-active', 'bg-blue-900/20', 'text-blue-400');
-                document.getElementById('focus-ping').classList.add('opacity-0');
-                document.getElementById('focus-dot').classList.remove('bg-blue-500');
-                document.getElementById('focus-banner').classList.add('hidden');
-                document.getElementById('grid-title').innerText = "Course Content";
-            }
-
-            // Generate Cards
-            videosToRender.forEach(video => {
-                const isDone = state.completed.includes(video.index);
-                const progress = state.progress[video.index] || 0;
-                const card = createCard(video, isDone, progress);
-                grid.appendChild(card);
-            });
-        }
-
-        function createCard(video, isDone, progress) {
-            const div = document.createElement('div');
-            div.className = `video-card group bg-yt-surface rounded-lg overflow-hidden cursor-pointer relative ${isDone ? 'opacity-50 grayscale' : ''}`;
-            
-            div.onclick = () => openModal(video.index);
-
-            div.innerHTML = `
-                <div class="aspect-video relative">
-                    <img src="https://i.ytimg.com/vi/${video.id}/mqdefault.jpg" class="w-full h-full object-cover">
-                    
-                    <div class="absolute inset-0 bg-black/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span class="text-white font-bold text-sm">${isDone ? 'COMPLETED' : Math.round(progress) + '% Watched'}</span>
-                    </div>
-
-                    <div class="progress-rail">
-                        <div class="progress-fill" style="width: ${isDone ? 100 : progress}%"></div>
-                    </div>
-
-                    <div class="absolute bottom-2 right-2 bg-black/90 text-white text-[10px] px-1 rounded font-mono">
-                        #${video.index}
-                    </div>
-                </div>
-                <div class="p-3">
-                    <h4 class="text-white text-sm font-medium line-clamp-2 leading-snug group-hover:text-blue-400 transition-colors">${video.title}</h4>
-                    <div class="mt-2 flex justify-between items-center">
-                        <div class="text-[10px] text-gray-500">${isDone ? 'Finished' : (progress > 0 ? 'In Progress' : 'Not Started')}</div>
-                        ${isDone ? '<span class="text-green-500 text-xs">✔</span>' : ''}
-                    </div>
-                </div>
-            `;
-            return div;
-        }
-
-        // --- 5. LOGIC & TRACKING ---
-
-        function toggleFocusMode() {
-            state.focusMode = !state.focusMode;
-            saveState(); // Persist focus mode preference
-            render();
-        }
-
-        function toggleCompleted() {
-            showCompleted = !showCompleted;
-            render();
-        }
-
-        function openModal(index) {
-            activeVideoIndex = index;
-            const video = courseData.find(v => v.index === index);
-            document.getElementById('video-modal').classList.remove('hidden');
-            document.getElementById('video-modal').classList.add('flex');
-            document.getElementById('modal-title').innerText = video.title;
-            
-            if(player && player.loadVideoById) {
-                player.loadVideoById(video.id);
-            }
-        }
-
-        function closeModal() {
-            if(player) player.stopVideo();
-            clearInterval(trackingInterval);
-            document.getElementById('video-modal').classList.add('hidden');
-            document.getElementById('video-modal').classList.remove('flex');
-            saveState();
-            render(); // Re-render to update the progress bar on the card immediately
-        }
-
-        function onPlayerStateChange(event) {
-            if (event.data === YT.PlayerState.PLAYING) {
-                // Start Tracking Loop
-                clearInterval(trackingInterval); // Safety clear
-                trackingInterval = setInterval(() => {
-                    if(!player || !player.getCurrentTime) return;
-
-                    const current = player.getCurrentTime();
-                    const total = player.getDuration();
-                    if(total <= 0) return;
-
-                    const pct = (current / total) * 100;
-                    
-                    // Update State Logic
-                    state.progress[activeVideoIndex] = pct;
-                    
-                    // Update UI inside Modal
-                    document.getElementById('watch-status').innerHTML = `
-                        Tracking: <span class="text-blue-400">${Math.round(pct)}%</span>
-                    `;
-
-                    // Completion Logic ( > 85% to be safe)
-                    if (pct > 85 && !state.completed.includes(activeVideoIndex)) {
-                        state.completed.push(activeVideoIndex);
-                        document.getElementById('watch-status').innerHTML = `<span class="text-green-500">Video Completed!</span>`;
-                        // Don't clear interval, let them finish watching, but we saved the completion
-                    }
-
-                    saveState(); // Save progress continuously
-
-                }, 3000); // Check every 3 seconds
-            } else {
-                clearInterval(trackingInterval);
-            }
-        }
-
-        function manualComplete() {
-            if(activeVideoIndex && !state.completed.includes(activeVideoIndex)) {
-                state.completed.push(activeVideoIndex);
-                state.progress[activeVideoIndex] = 100;
-                saveState();
-                render();
-                document.getElementById('watch-status').innerHTML = `<span class="text-green-500">Marked Done Manually</span>`;
-            }
-        }
-
-        function saveState() {
-            localStorage.setItem('dl_tracker_v3', JSON.stringify(state));
-            syncToFirebase();
-        }
-
-        function updateUsername() {
-            const val = document.getElementById('username-input').value;
-            if(val.trim()) {
-                state.username = val.trim();
-                saveState();
-                render();
-            }
-        }
-
-        // --- 6. FIREBASE SYNC ---
-        function syncToFirebase() {
-            if(state.username === "Anonymous") return;
-            const db = firebase.database();
-            const safeName = state.username.replace(/[.#$/[\]]/g, '');
-            
-            db.ref('users/' + safeName).set({
-                username: state.username,
-                score: state.completed.length,
-                progress: Math.round((state.completed.length / CONFIG.totalVideos) * 100),
-                lastActive: Date.now()
-            });
-        }
-
-        function syncLeaderboard() {
-            const db = firebase.database();
-            db.ref('users').on('value', (snapshot) => {
-                const list = document.getElementById('leaderboard-list');
-                list.innerHTML = '';
-                const data = snapshot.val();
-                if(!data) return;
-
-                const sorted = Object.values(data).sort((a,b) => b.score - a.score);
-                
-                sorted.forEach((u, i) => {
-                    const isMe = u.username === state.username;
-                    const row = document.createElement('div');
-                    row.className = `flex justify-between items-center text-xs p-2 rounded ${isMe ? 'bg-blue-900/30 border border-blue-500/30' : 'hover:bg-white/5'}`;
-                    row.innerHTML = `
-                        <div class="flex gap-2 items-center">
-                            <span class="${i<3 ? 'text-yellow-400 font-bold' : 'text-gray-500'}">#${i+1}</span>
-                            <span class="${isMe ? 'text-white font-bold' : 'text-gray-400'}">${u.username}</span>
-                        </div>
-                        <div class="text-gray-500">${u.score} pts</div>
-                    `;
-                    list.appendChild(row);
+            if (player && player.loadPlaylist) {
+                player.loadPlaylist({
+                    list: CONFIG.playlistId,
+                    listType: 'playlist',
+                    index: 0,
+                    suggestedQuality: 'default'
                 });
-            });
+            }
+        } catch (e) { console.warn("Could not load playlist:", e); }
+
+        let tries = 0;
+        const maxTries = 30;
+        const poll = setInterval(() => {
+            tries++;
+            if (!player || !player.getPlaylist) return;
+            const ids = player.getPlaylist();
+            if (ids && ids.length > 0) {
+                clearInterval(poll);
+                courseData = ids.map((vid, idx) => ({
+                    id: vid,
+                    title: `Video ${idx+1}`,
+                    index: idx + 1
+                }));
+                CONFIG.totalVideos = courseData.length;
+                render();
+            } else if (tries >= maxTries) {
+                clearInterval(poll);
+                courseData = [];
+                CONFIG.totalVideos = 0;
+                render();
+            }
+        }, 500);
+    }
+
+    // --- 4. CORE FUNCTIONS ---
+
+    function render() {
+        const grid = document.getElementById('video-grid');
+        grid.innerHTML = '';
+
+        // Ensure checkbox matches state
+        const checkbox = document.getElementById('hide-completed-check');
+        if(checkbox) checkbox.checked = hideCompleted;
+
+        if (courseData.length === 0) {
+            const helper = document.createElement('div');
+            helper.className = "p-6 bg-yt-surface/60 rounded-lg text-center text-gray-300";
+            helper.innerHTML = `
+                <div class="text-lg font-bold mb-2">Playlist not loaded yet</div>
+                <div class="text-sm">The embedded player is attempting to fetch the playlist.</div>
+                <div class="mt-3 text-xs text-gray-400">Loaded videos: ${CONFIG.totalVideos}</div>
+            `;
+            grid.appendChild(helper);
+            return;
         }
 
-        // Initialize
-        render();
+        const completedCount = state.completed.length;
+        const daysLeft = Math.max(1, Math.ceil((CONFIG.deadline - new Date()) / 86400000));
+        const dailyTarget = Math.ceil((Math.max(0, CONFIG.totalVideos - completedCount)) / daysLeft);
 
-    </script>
+        document.getElementById('daily-count').innerText = dailyTarget;
+        document.getElementById('daily-msg').innerText = state.completed.length === CONFIG.totalVideos ? "Course Complete!" : `You have ${daysLeft} days remaining.`;
+        document.getElementById('header-stats').innerText = `${CONFIG.totalVideos === 0 ? 0 : Math.round((completedCount/CONFIG.totalVideos)*100)}% Complete`;
+        document.getElementById('username-input').value = state.username === "Anonymous" ? "" : state.username;
+        document.getElementById('rank-display').innerText = state.username;
+
+        let videosToRender = courseData;
+
+        if (state.focusMode) {
+            // Focus mode logic remains same (shows today's target)
+            const unwatched = courseData.filter(v => !state.completed.includes(v.index));
+            videosToRender = unwatched.slice(0, dailyTarget);
+            document.getElementById('focus-btn').classList.add('focus-active', 'bg-blue-900/20', 'text-blue-400');
+            document.getElementById('focus-ping').classList.remove('opacity-0');
+            document.getElementById('focus-dot').classList.add('bg-blue-500');
+            document.getElementById('focus-banner').classList.remove('hidden');
+            document.getElementById('grid-title').innerText = "Target Locked: Today's Queue";
+        } else {
+            // UPDATED: Logic for Hide Completed Checkbox
+            if (hideCompleted) {
+                videosToRender = courseData.filter(v => !state.completed.includes(v.index));
+            }
+            
+            document.getElementById('focus-btn').classList.remove('focus-active', 'bg-blue-900/20', 'text-blue-400');
+            document.getElementById('focus-ping').classList.add('opacity-0');
+            document.getElementById('focus-dot').classList.remove('bg-blue-500');
+            document.getElementById('focus-banner').classList.add('hidden');
+            document.getElementById('grid-title').innerText = "Course Content";
+        }
+
+        videosToRender.forEach(video => {
+            const isDone = state.completed.includes(video.index);
+            const progress = state.progress[video.index] || 0;
+            const card = createCard(video, isDone, progress);
+            grid.appendChild(card);
+        });
+    }
+
+    function createCard(video, isDone, progress) {
+        const div = document.createElement('div');
+        div.className = `video-card group bg-yt-surface rounded-lg overflow-hidden cursor-pointer relative ${isDone ? 'opacity-50 grayscale' : ''}`;
+
+        div.onclick = () => openModal(video.index);
+
+        div.innerHTML = `
+            <div class="aspect-video relative">
+                <img src="https://i.ytimg.com/vi/${video.id}/mqdefault.jpg" class="w-full h-full object-cover">
+                
+                <div class="absolute inset-0 bg-black/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span class="text-white font-bold text-sm">${isDone ? 'COMPLETED' : Math.round(progress) + '% Watched'}</span>
+                </div>
+
+                <div class="progress-rail">
+                    <div class="progress-fill" style="width: ${isDone ? 100 : progress}%"></div>
+                </div>
+
+                <div class="absolute bottom-2 right-2 bg-black/90 text-white text-[10px] px-1 rounded font-mono">
+                    #${video.index}
+                </div>
+            </div>
+            <div class="p-3">
+                <h4 class="text-white text-sm font-medium line-clamp-2 leading-snug group-hover:text-blue-400 transition-colors">${video.title}</h4>
+                <div class="mt-2 flex justify-between items-center">
+                    <div class="text-[10px] text-gray-500">${isDone ? 'Finished' : (progress > 0 ? 'In Progress' : 'Not Started')}</div>
+                    ${isDone ? '<span class="text-green-500 text-xs">✔</span>' : ''}
+                </div>
+            </div>
+        `;
+        return div;
+    }
+
+    // --- 5. LOGIC & TRACKING ---
+
+    function toggleFocusMode() {
+        state.focusMode = !state.focusMode;
+        saveState();
+        render();
+    }
+
+    // UPDATED FUNCTION for Checkbox
+    function toggleHideCompleted() {
+        hideCompleted = !hideCompleted;
+        render();
+    }
+
+    function openModal(index) {
+        activeVideoIndex = index;
+        const video = courseData.find(v => v.index === index);
+        document.getElementById('video-modal').classList.remove('hidden');
+        document.getElementById('video-modal').classList.add('flex');
+        document.getElementById('modal-title').innerText = video.title;
+
+        if (player && player.loadVideoById) {
+            player.loadVideoById(video.id);
+            setTimeout(() => {
+                try { player.playVideo(); } catch(e) {}
+            }, 400);
+        }
+    }
+
+    function closeModal() {
+        if (player) try { player.stopVideo(); } catch (e) {}
+        clearInterval(trackingInterval);
+        document.getElementById('video-modal').classList.add('hidden');
+        document.getElementById('video-modal').classList.remove('flex');
+        saveState();
+        render();
+    }
+
+    function onPlayerStateChange(event) {
+        if (event.data === YT.PlayerState.PLAYING) {
+            clearInterval(trackingInterval);
+            trackingInterval = setInterval(() => {
+                if (!player || !player.getCurrentTime) return;
+                const current = player.getCurrentTime();
+                const total = player.getDuration();
+                if (total <= 0) return;
+
+                const pct = (current / total) * 100;
+                state.progress[activeVideoIndex] = pct;
+
+                document.getElementById('watch-status').innerHTML = `
+                    Tracking: <span class="text-blue-400">${Math.round(pct)}%</span>
+                `;
+
+                if (pct > 85 && !state.completed.includes(activeVideoIndex)) {
+                    state.completed.push(activeVideoIndex);
+                    document.getElementById('watch-status').innerHTML = `<span class="text-green-500">Video Completed!</span>`;
+                }
+
+                saveState();
+            }, 3000);
+        } else {
+            clearInterval(trackingInterval);
+        }
+    }
+
+    function manualComplete() {
+        if (activeVideoIndex && !state.completed.includes(activeVideoIndex)) {
+            state.completed.push(activeVideoIndex);
+            state.progress[activeVideoIndex] = 100;
+            saveState();
+            render();
+            document.getElementById('watch-status').innerHTML = `<span class="text-green-500">Marked Done Manually</span>`;
+        }
+    }
+
+    function saveState() {
+        localStorage.setItem('dl_tracker_v3', JSON.stringify(state));
+        syncToFirebase();
+    }
+
+    function updateUsername() {
+        const val = document.getElementById('username-input').value;
+        if (val.trim()) {
+            state.username = val.trim();
+            saveState();
+            render();
+        }
+    }
+
+    // --- 6. FIREBASE SYNC ---
+    function syncToFirebase() {
+        if (state.username === "Anonymous") return;
+        const db = firebase.database();
+        const safeName = state.username.replace(/[.#$/[\]]/g, '');
+        db.ref('users/' + safeName).set({
+            username: state.username,
+            score: state.completed.length,
+            progress: Math.round((state.completed.length / Math.max(1, CONFIG.totalVideos)) * 100),
+            lastActive: Date.now()
+        });
+    }
+
+    function syncLeaderboard() {
+        const db = firebase.database();
+        db.ref('users').on('value', (snapshot) => {
+            const list = document.getElementById('leaderboard-list');
+            list.innerHTML = '';
+            const data = snapshot.val();
+            if (!data) return;
+
+            const sorted = Object.values(data).sort((a, b) => b.score - a.score);
+
+            sorted.forEach((u, i) => {
+                const isMe = u.username === state.username;
+                const row = document.createElement('div');
+                row.className = `flex justify-between items-center text-xs p-2 rounded ${isMe ? 'bg-blue-900/30 border border-blue-500/30' : 'hover:bg-white/5'}`;
+                row.innerHTML = `
+                    <div class="flex gap-2 items-center">
+                        <span class="${i<3 ? 'text-yellow-400 font-bold' : 'text-gray-500'}">#${i+1}</span>
+                        <span class="${isMe ? 'text-white font-bold' : 'text-gray-400'}">${u.username}</span>
+                    </div>
+                    <div class="text-gray-500">${u.score} pts</div>
+                `;
+                list.appendChild(row);
+            });
+        });
+    }
+
+    // Initial render
+    render();
+</script>
 </body>
 </html>
